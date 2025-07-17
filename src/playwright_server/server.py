@@ -8,6 +8,7 @@ import mcp.server.stdio
 
 server = Server("playwright-server")
 
+
 @server.list_resources()
 async def handle_list_resources() -> list[types.Resource]:
     """
@@ -15,6 +16,7 @@ async def handle_list_resources() -> list[types.Resource]:
     Each note is exposed as a resource with a custom note:// URI scheme.
     """
     return []
+
 
 @server.read_resource()
 async def handle_read_resource(uri: AnyUrl) -> str:
@@ -32,6 +34,7 @@ async def handle_list_prompts() -> list[types.Prompt]:
     Each prompt can have optional arguments to customize its behavior.
     """
     return []
+
 
 @server.get_prompt()
 async def handle_get_prompt(
@@ -66,11 +69,9 @@ async def handle_list_tools() -> list[types.Tool]:
             description="Navigate to a URL,thip op will auto create a session",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "url": {"type": "string"}
-                },
-                "required": ["url"]
-            }
+                "properties": {"url": {"type": "string"}},
+                "required": ["url"],
+            },
         ),
         types.Tool(
             name="playwright_screenshot",
@@ -79,10 +80,13 @@ async def handle_list_tools() -> list[types.Tool]:
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
-                    "selector": {"type": "string", "description": "CSS selector for element to screenshot,null is full page"},
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector for element to screenshot,null is full page",
+                    },
                 },
-                "required": ["name"]
-            }
+                "required": ["name"],
+            },
         ),
         types.Tool(
             name="playwright_click",
@@ -90,10 +94,13 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "selector": {"type": "string", "description": "CSS selector for element to click"}
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector for element to click",
+                    }
                 },
-                "required": ["selector"]
-            }
+                "required": ["selector"],
+            },
         ),
         types.Tool(
             name="playwright_fill",
@@ -101,11 +108,14 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "selector": {"type": "string", "description": "CSS selector for input field"},
-                    "value": {"type": "string", "description": "Value to fill"}
+                    "selector": {
+                        "type": "string",
+                        "description": "CSS selector for input field",
+                    },
+                    "value": {"type": "string", "description": "Value to fill"},
                 },
-                "required": ["selector", "value"]
-            }
+                "required": ["selector", "value"],
+            },
         ),
         types.Tool(
             name="playwright_evaluate",
@@ -115,8 +125,8 @@ async def handle_list_tools() -> list[types.Tool]:
                 "properties": {
                     "script": {"type": "string", "description": "JavaScript code to execute"}
                 },
-                "required": ["script"]
-            }
+                "required": ["script"],
+            },
         ),
         types.Tool(
             name="playwright_click_text",
@@ -124,32 +134,35 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "text": {"type": "string", "description": "Text content of the element to click"}
+                    "text": {
+                        "type": "string",
+                        "description": "Text content of the element to click",
+                    }
                 },
-                "required": ["text"]
-            }
+                "required": ["text"],
+            },
         ),
-         types.Tool(
+        types.Tool(
             name="playwright_get_text_content",
             description="Get the text content of all elements",
             inputSchema={
                 "type": "object",
-                "properties": {
-                },
-            }
+                "properties": {},
+            },
         ),
         types.Tool(
             name="playwright_get_html_content",
             description="Get the HTML content of the page",
-             inputSchema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "selector": {"type": "string", "description": "CSS selector for the element"}
                 },
-                "required": ["selector"]
-            }
-        )
+                "required": ["selector"],
+            },
+        ),
     ]
+
 
 import uuid
 from playwright.async_api import async_playwright
@@ -158,38 +171,54 @@ import os
 
 import asyncio
 
-def update_page_after_click(func):
+
+def update_page_after_action(func):
     async def wrapper(self, name: str, arguments: dict | None):
         if not self._sessions:
-            return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            return [
+                types.TextContent(
+                    type="text", text="No active session. Please create a new session first."
+                )
+            ]
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
-        
-        new_page_future = asyncio.ensure_future(page.context.wait_for_event("page", timeout=3000))
-        
+        current_url = page.url
+
         result = await func(self, name, arguments)
+
         try:
-            new_page = await new_page_future
-            await new_page.wait_for_load_state()
-            self._sessions[session_id]["page"] = new_page
+            await page.wait_for_load_state(timeout=3000)
         except:
             pass
-            # if page.url != self._sessions[session_id]["page"].url:
-            #     await page.wait_for_load_state()
-            #     self._sessions[session_id]["page"] = page
-        
+
+        if page.url != current_url:
+            text_content = await GetTextContentToolHandler().handle("", {})
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Navigated to {page.url}\npage_text_content:\n\n{text_content}",
+                )
+            ]
+
         return result
+
     return wrapper
+
 
 class ToolHandler:
     _sessions: dict[str, any] = {}
     _playwright: any = None
 
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         raise NotImplementedError
 
+
 class NewSessionToolHandler(ToolHandler):
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         self._playwright = await async_playwright().start()
         browser = await self._playwright.chromium.launch(headless=False)
         page = await browser.new_page()
@@ -202,24 +231,39 @@ class NewSessionToolHandler(ToolHandler):
             await page.goto(url)
         return [types.TextContent(type="text", text="succ")]
 
+
 class NavigateToolHandler(ToolHandler):
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    @update_page_after_action
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         if not self._sessions:
-            await NewSessionToolHandler().handle("",{})
-            # return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            await NewSessionToolHandler().handle("", arguments)
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
         url = arguments.get("url")
         if not url.startswith("http://") and not url.startswith("https://"):
             url = "https://" + url
         await page.goto(url)
-        text_content=await GetTextContentToolHandler().handle("",{})
-        return [types.TextContent(type="text", text=f"Navigated to {url}\npage_text_content[:200]:\n\n{text_content[:200]}")]
+        text_content = await GetTextContentToolHandler().handle("", {})
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Navigated to {url}\npage_text_content:\n\n{text_content}",
+            )
+        ]
+
 
 class ScreenshotToolHandler(ToolHandler):
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         if not self._sessions:
-            return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            return [
+                types.TextContent(
+                    type="text", text="No active session. Please create a new session first."
+                )
+            ]
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
         name = arguments.get("name")
@@ -235,60 +279,99 @@ class ScreenshotToolHandler(ToolHandler):
         os.remove(f"{name}.png")
         return [types.ImageContent(type="image", data=encoded_string, mimeType="image/png")]
 
+
 class ClickToolHandler(ToolHandler):
-    @update_page_after_click
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    @update_page_after_action
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         if not self._sessions:
-            return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            return [
+                types.TextContent(
+                    type="text", text="No active session. Please create a new session first."
+                )
+            ]
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
         selector = arguments.get("selector")
         await page.locator(selector).click()
         return [types.TextContent(type="text", text=f"Clicked element with selector {selector}")]
 
+
 class FillToolHandler(ToolHandler):
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         if not self._sessions:
-            return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            return [
+                types.TextContent(
+                    type="text", text="No active session. Please create a new session first."
+                )
+            ]
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
         selector = arguments.get("selector")
         value = arguments.get("value")
         await page.locator(selector).fill(value)
-        return [types.TextContent(type="text", text=f"Filled element with selector {selector} with value {value}")]
+        return [
+            types.TextContent(
+                type="text", text=f"Filled element with selector {selector} with value {value}"
+            )
+        ]
+
 
 class EvaluateToolHandler(ToolHandler):
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         if not self._sessions:
-            return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            return [
+                types.TextContent(
+                    type="text", text="No active session. Please create a new session first."
+                )
+            ]
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
         script = arguments.get("script")
         result = await page.evaluate(script)
         return [types.TextContent(type="text", text=f"Evaluated script, result: {result}")]
 
+
 class ClickTextToolHandler(ToolHandler):
-    @update_page_after_click
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    @update_page_after_action
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         if not self._sessions:
-            return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            return [
+                types.TextContent(
+                    type="text", text="No active session. Please create a new session first."
+                )
+            ]
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
         text = arguments.get("text")
         await page.locator(f"text={text}").nth(0).click()
         return [types.TextContent(type="text", text=f"Clicked element with text {text}")]
 
+
 class GetTextContentToolHandler(ToolHandler):
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         if not self._sessions:
-            return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            return [
+                types.TextContent(
+                    type="text", text="No active session. Please create a new session first."
+                )
+            ]
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
         # text_contents = await page.locator('body').all_inner_texts()
 
-
         async def get_unique_texts_js(page):
-            unique_texts = await page.evaluate('''() => {
+            unique_texts = await page.evaluate(
+                '''() => {
             var elements = Array.from(document.querySelectorAll('*')); // 先选择所有元素，再进行过滤
             var uniqueTexts = new Set();
 
@@ -310,25 +393,39 @@ class GetTextContentToolHandler(ToolHandler):
             //console.log( Array.from(uniqueTexts));
             return Array.from(uniqueTexts);
         }
-        ''')
+        '''
+            )
             return unique_texts
 
         # 使用示例
         text_contents = await get_unique_texts_js(page)
 
+        return [
+            types.TextContent(
+                type="text", text=f"Text content of all elements: {text_contents}"
+            )
+        ]
 
-
-        return [types.TextContent(type="text", text=f"Text content of all elements: {text_contents}")]
 
 class GetHtmlContentToolHandler(ToolHandler):
-    async def handle(self, name: str, arguments: dict | None) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
+    async def handle(
+        self, name: str, arguments: dict | None
+    ) -> list[types.TextContent | types.ImageContent | types.EmbeddedResource]:
         if not self._sessions:
-            return [types.TextContent(type="text", text="No active session. Please create a new session first.")]
+            return [
+                types.TextContent(
+                    type="text", text="No active session. Please create a new session first."
+                )
+            ]
         session_id = list(self._sessions.keys())[-1]
         page = self._sessions[session_id]["page"]
         selector = arguments.get("selector")
         html_content = await page.locator(selector).inner_html()
-        return [types.TextContent(type="text", text=f"HTML content of element with selector {selector}: {html_content}")]
+        return [
+            types.TextContent(
+                type="text", text=f"HTML content of element with selector {selector}: {html_content}"
+            )
+        ]
 
 
 tool_handlers = {
@@ -340,7 +437,7 @@ tool_handlers = {
     "playwright_click_text": ClickTextToolHandler(),
     "playwright_get_text_content": GetTextContentToolHandler(),
     "playwright_get_html_content": GetHtmlContentToolHandler(),
-    "playwright_new_session":NewSessionToolHandler(),
+    "playwright_new_session": NewSessionToolHandler(),
 }
 
 
@@ -357,7 +454,9 @@ async def handle_call_tool(
     else:
         raise ValueError(f"Unknown tool: {name}")
 
+
 async def main():
+    """Run the server using stdin/stdout streams."""
     # Run the server using stdin/stdout streams
     async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
         await server.run(
@@ -372,6 +471,7 @@ async def main():
                 ),
             ),
         )
+
 
 if __name__ == "__main__":
     asyncio.run(main())
