@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import os 
 import asyncio
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 
@@ -33,10 +34,11 @@ async def main():
             "transport": "sse",
         }
     })
-    tools = await client.get_tools()
-    agent = create_react_agent(model=llm, tools=tools)
-    resp = await agent.ainvoke({"messages":[{"role":"user","content":"Click first link on python.org"}]})
-    print(resp)
+    async with client.session("browser") as session:
+        tools = await load_mcp_tools(session)
+        agent = create_react_agent(model=llm, tools=tools)
+        resp = await agent.ainvoke({"messages":[{"role":"user","content":"Go to https://www.google.com, find the search field, click on the search field and add text 'hello' and press enter and print the first link and heading"}]})
+        print(resp)
 
 if __name__ == "__main__":
     asyncio.run(main())
