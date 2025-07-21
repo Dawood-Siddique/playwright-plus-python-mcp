@@ -38,7 +38,7 @@ async def main():
         tools = await load_mcp_tools(session)
         agent = create_react_agent(model=llm, tools=tools)
         resp = await agent.ainvoke({"messages":[{"role":"user","content":"Go to https://www.google.com, find the search field, click on the search field and add text 'hello' and press enter and print the first link and heading"}]})
-        print(resp)
+        print(resp['messages'][-1].content)
 
 if __name__ == "__main__":
     asyncio.run(main())
